@@ -1,8 +1,15 @@
 export function findPrice(priceRules, subCategory, size) {
   if (!priceRules || !subCategory) return 0;
-  const rule = priceRules.find(r =>
-    r.sub_category === subCategory && (r.size === size || (!size && !r.size))
+  // Buscar coincidencia exacta primero
+  let rule = priceRules.find(r =>
+    r.sub_category === subCategory && r.size === (size || '')
   );
+  // Si no encontró, buscar solo por subcategoría (para Arte & Accesorios sin size)
+  if (!rule) {
+    rule = priceRules.find(r =>
+      r.sub_category === subCategory && (!r.size || r.size === '')
+    );
+  }
   return rule ? (rule.price || 0) : 0;
 }
 
