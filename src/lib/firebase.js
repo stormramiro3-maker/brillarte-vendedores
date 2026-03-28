@@ -1,21 +1,19 @@
 import { initializeApp } from 'firebase/app';
-import { getDatabase, ref, onValue, set, update, push, remove, get } from 'firebase/database';
+import { getDatabase, ref, onValue, set, update, push, get } from 'firebase/database';
 
 const firebaseConfig = {
-  apiKey: "AIzaSyAT5vRUWjRO478wZfESKiwtgdwxehvYxs8",
-  authDomain: "brillarte-vendedores.firebaseapp.com",
-  databaseURL: "https://brillarte-vendedores-default-rtdb.firebaseio.com",
-  projectId: "brillarte-vendedores",
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
+  databaseURL: import.meta.env.VITE_FIREBASE_DATABASE_URL,
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
   storageBucket: "brillarte-vendedores.firebasestorage.app",
   messagingSenderId: "252786958351",
-  appId: "1:252786958351:web:9e6f2c1313e9fd83aac37a",
-  measurementId: "G-Y2G6FZ0CEY"
+  appId: import.meta.env.VITE_FIREBASE_APP_ID,
 };
 
 const app = initializeApp(firebaseConfig);
 export const db = getDatabase(app);
 
-// ── Products ──────────────────────────────────────────────────────────────────
 export function subscribeProducts(callback) {
   const r = ref(db, 'products');
   return onValue(r, snap => {
@@ -56,7 +54,6 @@ export async function getPriceRulesOnce() {
   return Object.values(val);
 }
 
-// ── Price Rules ───────────────────────────────────────────────────────────────
 export function subscribePriceRules(callback) {
   const r = ref(db, 'priceRules');
   return onValue(r, snap => {
@@ -65,7 +62,6 @@ export function subscribePriceRules(callback) {
   });
 }
 
-// ── Sales ─────────────────────────────────────────────────────────────────────
 export function subscribeSales(callback) {
   const r = ref(db, 'sales');
   return onValue(r, snap => {
