@@ -4,13 +4,11 @@ import { subscribeProducts, subscribePriceRules } from '../lib/firebase';
 import { useToast } from '../lib/toast';
 import { Upload, Download, Trash2, Loader2, CheckCircle, AlertTriangle, Database, FileSpreadsheet } from 'lucide-react';
 
-function SyncCard({ icon, iconColor, iconBg, title, description, children }) {
+function SyncCard({ icon, iconBg, title, description, children }) {
   return (
     <div style={{ borderRadius: 20, padding: '1.2rem', border: '1px solid rgba(200,0,90,0.1)', background: '#fff', boxShadow: '0 2px 12px rgba(200,0,90,0.05)' }}>
       <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.75rem', marginBottom: '1rem' }}>
-        <div style={{ borderRadius: 12, padding: '0.6rem', background: iconBg, flexShrink: 0 }}>
-          {icon}
-        </div>
+        <div style={{ borderRadius: 12, padding: '0.6rem', background: iconBg, flexShrink: 0 }}>{icon}</div>
         <div>
           <p style={{ fontWeight: 600, color: 'var(--dark)', fontSize: '0.95rem' }}>{title}</p>
           <p style={{ fontSize: '0.78rem', color: 'var(--blush)', opacity: 0.75, marginTop: 2 }}>{description}</p>
@@ -32,7 +30,15 @@ export default function SyncPage() {
   const [priceRules, setPriceRules] = useState([]);
 
   useEffect(() => {
-    const u1 = subscribeProducts(setProducts);
+    const u1 = subscribeProducts(p => {
+      // Con stock primero, sin stock al fondo — igual que la web
+      const sorted = [...p].sort((a, b) => {
+        const sa = (a.stock || 0) > 0 ? 0 : 1;
+        const sb = (b.stock || 0) > 0 ? 0 : 1;
+        return sa - sb || (a.name || '').localeCompare(b.name || '');
+      });
+      setProducts(sorted);
+    });
     const u2 = subscribePriceRules(setPriceRules);
     return () => { u1(); u2(); };
   }, []);
@@ -44,51 +50,35 @@ export default function SyncPage() {
     setImportResult(null);
 
     try {
-      const text = await file.text();
-      const lines = text.split('\n').filter(l => l.trim());
+      const arrayBuffer = await file.arrayBuffer();
+      const { read, utils } = await import('https://cdn.sheetjs.com/xlsx-0.20.1/package/xlsx.mjs');
+      const wb = read(arrayBuffer, { type: 'array' });
 
-      // Parse products section
-      const prodHeaders = lines[0].split(',').map(h => h.trim().replace(/"/g, ''));
-      const newProducts = [];
-      let i = 1;
+      // Hoja productos
+      const prodSheet = wb.Sheets['productos'];
+      const prodRows = utils.sheet_to_json(prodSheet, { defval: '' });
+      const newProducts = prodRows.map(row => ({
+        active: String(row['Activo']).toUpperCase() !== 'FALSE',
+        main_category: String(row['Main'] || '').trim(),
+        sub_category: String(row['Sub'] || '').trim(),
+        size: String(row['Size'] || '').trim(),
+        name: String(row['Producto'] || '').trim(),
+        image_url: String(row['Imagen'] || '').trim(),
+        stock: parseInt(row['Stock']) || 0,
+        tag1: String(row['Tag 1'] || '').trim(),
+        tag2: String(row['Tag 2'] || '').trim(),
+        tag3: String(row['Tag 3'] || '').trim(),
+        cloudinary_name: String(row['Nombre para Cloudinary'] || '').trim(),
+      })).filter(p => p.name);
 
-      while (i < lines.length) {
-        const line = lines[i].trim();
-        if (!line || line.startsWith('---') || line.startsWith('Sub,')) break;
-        const vals = line.split(',').map(v => v.trim().replace(/^"|"$/g, ''));
-        const row = {};
-        prodHeaders.forEach((h, idx) => row[h] = vals[idx] || '');
-
-        if (row['Main'] || row['Activo']) {
-          newProducts.push({
-            active: row['Activo'] !== 'FALSE',
-            main_category: row['Main'] || '',
-            sub_category: row['Sub'] || '',
-            size: row['Size'] || '',
-            name: row['Producto'] || '',
-            image_url: row['Imagen'] || '',
-            stock: parseInt(row['Stock']) || 0,
-            tag1: row['Tag 1'] || '',
-            tag2: row['Tag 2'] || '',
-            tag3: row['Tag 3'] || '',
-            cloudinary_name: row['Nombre para Cloudinary'] || '',
-          });
-        }
-        i++;
-      }
-
-      // Parse price rules section
-      const newPrices = [];
-      let inPrices = false;
-      while (i < lines.length) {
-        const line = lines[i].trim();
-        if (line.includes('PRECIOS') || line.startsWith('Sub,Size,Precio')) { inPrices = true; i++; continue; }
-        if (inPrices && line) {
-          const [sub, size, price] = line.split(',');
-          if (sub && price) newPrices.push({ sub_category: sub.trim(), size: size?.trim() || '', price: parseFloat(price) || 0 });
-        }
-        i++;
-      }
+      // Hoja precios
+      const precSheet = wb.Sheets['precios'];
+      const precRows = utils.sheet_to_json(precSheet, { defval: '' });
+      const newPrices = precRows.map(row => ({
+        sub_category: String(row['Sub'] || '').trim(),
+        size: String(row['Size'] || '').trim(),
+        price: parseFloat(row['Precio']) || 0,
+      })).filter(p => p.sub_category);
 
       await importProducts(newProducts, newPrices);
       setImportResult({ products: newProducts.length, prices: newPrices.length });
@@ -108,7 +98,12 @@ export default function SyncPage() {
       const prices = await getPriceRulesOnce();
 
       const headers = ['Activo', 'Main', 'Sub', 'Size', 'Producto', 'Imagen', 'Stock', 'Tag 1', 'Tag 2', 'Tag 3', 'Nombre para Cloudinary'];
-      const rows = prods.map(p => [p.active ? 'TRUE' : 'FALSE', p.main_category || '', p.sub_category || '', p.size || '', p.name || '', p.image_url || '', p.stock || 0, p.tag1 || '', p.tag2 || '', p.tag3 || '', p.cloudinary_name || '']);
+      const rows = prods.map(p => [
+        p.active ? 'TRUE' : 'FALSE',
+        p.main_category || '', p.sub_category || '', p.size || '',
+        p.name || '', p.image_url || '', p.stock || 0,
+        p.tag1 || '', p.tag2 || '', p.tag3 || '', p.cloudinary_name || ''
+      ]);
 
       let csv = '\uFEFF' + headers.join(',') + '\n';
       rows.forEach(row => {
@@ -156,9 +151,9 @@ export default function SyncPage() {
       </h1>
 
       {/* Import */}
-      <SyncCard icon={<Upload size={18} style={{ color: '#C8005A' }} />} iconColor="#C8005A" iconBg="rgba(200,0,90,0.08)" title="Importar CSV" description="Cargá el CSV exportado desde la BD de la web. Reemplaza todos los productos y precios.">
+      <SyncCard icon={<Upload size={18} style={{ color: '#C8005A' }} />} iconBg="rgba(200,0,90,0.08)" title="Importar Excel" description="Cargá el .xlsx descargado desde la BD de Google Sheets. Reemplaza todos los productos y precios.">
         <label style={{ display: 'block' }}>
-          <input type="file" accept=".csv,.xlsx,.xls" onChange={handleImport} disabled={importing}
+          <input type="file" accept=".xlsx,.xls,.csv" onChange={handleImport} disabled={importing}
             style={{ width: '100%', fontSize: '0.85rem', color: 'var(--blush)', cursor: 'pointer' }} />
         </label>
         {importing && (
@@ -177,7 +172,7 @@ export default function SyncPage() {
       </SyncCard>
 
       {/* Export */}
-      <SyncCard icon={<Download size={18} style={{ color: '#d4900a' }} />} iconColor="#d4900a" iconBg="rgba(212,144,10,0.1)" title="Exportar datos actuales" description="Descargá el estado actual del stock para pegar en la BD de la web.">
+      <SyncCard icon={<Download size={18} style={{ color: '#d4900a' }} />} iconBg="rgba(212,144,10,0.1)" title="Exportar datos actuales" description="Descargá el estado actual del stock para pegar en la BD de la web.">
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
           <button onClick={handleExport} disabled={exporting}
             style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.5rem 1rem', borderRadius: 50, fontSize: '0.85rem', fontWeight: 500, background: 'rgba(200,0,90,0.08)', color: 'var(--magenta)', border: '1px solid rgba(200,0,90,0.2)', cursor: 'pointer', transition: 'all 0.2s' }}>
@@ -191,7 +186,7 @@ export default function SyncPage() {
       </SyncCard>
 
       {/* DB Status */}
-      <SyncCard icon={<Database size={18} style={{ color: 'var(--blush)' }} />} iconColor="var(--blush)" iconBg="rgba(200,0,90,0.06)" title="Estado de la base de datos" description="Información actual del sistema">
+      <SyncCard icon={<Database size={18} style={{ color: 'var(--blush)' }} />} iconBg="rgba(200,0,90,0.06)" title="Estado de la base de datos" description="Información actual del sistema">
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '0.5rem' }}>
           {[
             { label: 'Total productos', value: products.length, color: 'var(--dark)' },
@@ -208,7 +203,7 @@ export default function SyncPage() {
       </SyncCard>
 
       {/* Danger zone */}
-      <SyncCard icon={<AlertTriangle size={18} style={{ color: '#e74c3c' }} />} iconColor="#e74c3c" iconBg="rgba(231,76,60,0.08)" title="Zona peligrosa" description="Limpiar historial de ventas al cerrar la feria">
+      <SyncCard icon={<AlertTriangle size={18} style={{ color: '#e74c3c' }} />} iconBg="rgba(231,76,60,0.08)" title="Zona peligrosa" description="Limpiar historial de ventas al cerrar la feria">
         {confirmClear && (
           <div style={{ background: 'rgba(231,76,60,0.06)', border: '1px solid rgba(231,76,60,0.2)', borderRadius: 12, padding: '0.75rem', marginBottom: '0.75rem', fontSize: '0.85rem', color: '#c0392b' }}>
             ⚠️ Esto eliminará todo el historial. ¿Confirmás?
