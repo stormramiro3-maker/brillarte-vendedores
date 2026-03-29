@@ -109,7 +109,6 @@ export default function SellPage() {
 
   useEffect(() => {
     const unsub1 = subscribeProducts(p => {
-      // Con stock primero, sin stock al fondo, luego alfabético
       const sorted = [...p].sort((a, b) => {
         const sa = (a.stock || 0) > 0 ? 0 : 1;
         const sb = (b.stock || 0) > 0 ? 0 : 1;
@@ -123,16 +122,17 @@ export default function SellPage() {
     return () => { unsub1(); unsub2(); };
   }, []);
 
-  const active = products.filter(p => p.active !== false);
-  const mains = [...new Set(active.map(p => p.main_category).filter(Boolean))];
-  const subs = [...new Set(active.filter(p => !filters.main || p.main_category === filters.main).map(p => p.sub_category).filter(Boolean))];
+  // Mostrar TODOS los productos sin filtrar por Activo
+  const all = products;
+  const mains = [...new Set(all.map(p => p.main_category).filter(Boolean))];
+  const subs = [...new Set(all.filter(p => !filters.main || p.main_category === filters.main).map(p => p.sub_category).filter(Boolean))];
   const sizes = [...new Set(
-    active
+    all
       .filter(p => (!filters.main || p.main_category === filters.main) && (!filters.sub || p.sub_category === filters.sub))
       .map(p => p.size).filter(Boolean)
   )].sort();
 
-  const filtered = active.filter(p => {
+  const filtered = all.filter(p => {
     if (filters.main && p.main_category !== filters.main) return false;
     if (filters.sub && p.sub_category !== filters.sub) return false;
     if (filters.size && p.size !== filters.size) return false;
