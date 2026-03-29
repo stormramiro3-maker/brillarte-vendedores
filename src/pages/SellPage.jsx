@@ -3,7 +3,7 @@ import { subscribeProducts, subscribePriceRules, updateProductStock, createSale 
 import { useSeller } from '../lib/sellerContext';
 import { useToast } from '../lib/toast';
 import { findPrice, formatPrice } from '../lib/priceUtils';
-import { Minus, Plus, Search, X, SlidersHorizontal, PackageSearch, Loader2 } from 'lucide-react';
+import { Minus, Plus, Search, X, SlidersHorizontal, PackageSearch, Loader2, ChevronDown } from 'lucide-react';
 
 function imgUrl(url) {
   if (!url) return null;
@@ -99,103 +99,8 @@ function ProductCard({ product, priceRules, seller, toast }) {
   );
 }
 
-export default function SellPage() {
-  const { seller } = useSeller();
-  const toast = useToast();
-  const [products, setProducts] = useState([]);
-  const [priceRules, setPriceRules] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [filters, setFilters] = useState({ main: '', sub: '', size: '', search: '', stockOnly: false });
-
-  useEffect(() => {
-    const unsub1 = subscribeProducts(p => {
-      const sorted = [...p].sort((a, b) => {
-        const sa = (a.stock || 0) > 0 ? 0 : 1;
-        const sb = (b.stock || 0) > 0 ? 0 : 1;
-        if (sa !== sb) return sa - sb;
-        return (a.name || '').localeCompare(b.name || '', 'es');
-      });
-      setProducts(sorted);
-      setLoading(false);
-    });
-    const unsub2 = subscribePriceRules(setPriceRules);
-    return () => { unsub1(); unsub2(); };
-  }, []);
-
-  // Mostrar TODOS los productos sin filtrar por Activo
-  const all = products;
-  const mains = [...new Set(all.map(p => p.main_category).filter(Boolean))];
-  const subs = [...new Set(all.filter(p => !filters.main || p.main_category === filters.main).map(p => p.sub_category).filter(Boolean))];
-  const sizes = [...new Set(
-    all
-      .filter(p => (!filters.main || p.main_category === filters.main) && (!filters.sub || p.sub_category === filters.sub))
-      .map(p => p.size).filter(Boolean)
-  )].sort();
-
-  const filtered = all.filter(p => {
-    if (filters.main && p.main_category !== filters.main) return false;
-    if (filters.sub && p.sub_category !== filters.sub) return false;
-    if (filters.size && p.size !== filters.size) return false;
-    if (filters.search && !p.name?.toLowerCase().includes(filters.search.toLowerCase())) return false;
-    if (filters.stockOnly && (p.stock || 0) <= 0) return false;
-    return true;
-  });
-
-  const chip = (isActive) => ({
-    padding: '0.3rem 0.8rem', borderRadius: 50, fontSize: '0.78rem', cursor: 'pointer',
-    border: isActive ? '1px solid var(--magenta)' : '1px solid rgba(200,0,90,0.2)',
-    background: isActive ? 'rgba(200,0,90,0.08)' : '#fff',
-    color: isActive ? 'var(--magenta)' : 'var(--blush)',
-    fontWeight: isActive ? 500 : 400, whiteSpace: 'nowrap', transition: 'all 0.15s',
-  });
-
-  const activeCount = [filters.main, filters.sub, filters.size, filters.search, filters.stockOnly].filter(Boolean).length;
-
-  if (loading) return (
-    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '5rem 0', gap: '0.75rem' }}>
-      <Loader2 size={28} style={{ color: 'var(--hot)', animation: 'spin 1s linear infinite' }} />
-      <p style={{ color: 'var(--blush)', fontSize: '0.9rem' }}>Cargando productos...</p>
-      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
-    </div>
-  );
-
+function FSection({ label, items, selected, onToggle }) {
+  const [open, setOpen] = useState(true);
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-      <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-        <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.55rem 0.9rem', borderRadius: 50, background: '#fff', border: '1px solid rgba(200,0,90,0.2)' }}>
-          <Search size={15} style={{ color: 'var(--magenta)', flexShrink: 0 }} />
-          <input placeholder="Buscar producto..." value={filters.search} onChange={e => setFilters(f => ({ ...f, search: e.target.value }))}
-            style={{ flex: 1, outline: 'none', background: 'transparent', fontSize: '0.88rem', color: 'var(--dark)', border: 'none', minWidth: 0 }} />
-          {filters.search && <button onClick={() => setFilters(f => ({ ...f, search: '' }))} style={{ color: 'var(--magenta)' }}><X size={13} /></button>}
-        </div>
-        {activeCount > 0 && (
-          <button onClick={() => setFilters({ main: '', sub: '', size: '', search: '', stockOnly: false })}
-            style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', padding: '0.5rem 0.8rem', borderRadius: 50, fontSize: '0.78rem', color: 'var(--blush)', border: '1px solid rgba(200,0,90,0.2)', background: '#fff' }}>
-            <X size={12} /> ({activeCount})
-          </button>
-        )}
-      </div>
-
-      <div style={{ display: 'flex', gap: '0.4rem', overflowX: 'auto', paddingBottom: 4, scrollbarWidth: 'none', alignItems: 'center' }}>
-        <SlidersHorizontal size={13} style={{ color: 'var(--blush)', opacity: 0.6, flexShrink: 0 }} />
-        <button style={chip(filters.stockOnly)} onClick={() => setFilters(f => ({ ...f, stockOnly: !f.stockOnly }))}>Con stock</button>
-        {mains.map(m => <button key={m} style={chip(filters.main === m)} onClick={() => setFilters(f => ({ ...f, main: f.main === m ? '' : m, sub: '', size: '' }))}>{m}</button>)}
-        {filters.main && subs.map(s => <button key={s} style={chip(filters.sub === s)} onClick={() => setFilters(f => ({ ...f, sub: f.sub === s ? '' : s, size: '' }))}>{s}</button>)}
-        {sizes.map(s => <button key={s} style={chip(filters.size === s)} onClick={() => setFilters(f => ({ ...f, size: f.size === s ? '' : s }))}>{s}</button>)}
-      </div>
-
-      <p style={{ fontSize: '0.75rem', color: 'var(--blush)', opacity: 0.6 }}>{filtered.length} producto{filtered.length !== 1 ? 's' : ''}</p>
-
-      {filtered.length === 0
-        ? <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '4rem 0', color: 'var(--blush)', gap: '0.5rem' }}>
-            <PackageSearch size={44} style={{ opacity: 0.35 }} />
-            <p style={{ fontWeight: 500 }}>Sin resultados</p>
-            <p style={{ fontSize: '0.85rem', opacity: 0.6 }}>Probá ajustando los filtros</p>
-          </div>
-        : <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: '0.75rem' }}>
-            {filtered.map(p => <ProductCard key={p.id} product={p} priceRules={priceRules} seller={seller} toast={toast} />)}
-          </div>
-      }
-    </div>
-  );
-}
+    <div style={{ borderBottom: '1px solid rgba(200,0,90,0.07)' }}>
+      <div onClick={() => setOpen(o => !o)
